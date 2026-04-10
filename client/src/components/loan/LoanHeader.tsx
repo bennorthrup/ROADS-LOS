@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Menu,
   ChevronRight,
@@ -55,6 +56,12 @@ interface LoanHeaderProps {
   onTabChange?: (tab: string) => void;
 }
 
+const TAB_ROUTES: Record<string, string> = {
+  Summary: "/loans/:id",
+  Origination: "/loans/:id/origination",
+  Decisioning: "/loans/:id/decisioning",
+};
+
 export function LoanHeader({
   loanNumber = "123456789",
   cifNumber = "1234567",
@@ -68,10 +75,17 @@ export function LoanHeader({
   onTabChange,
 }: LoanHeaderProps) {
   const [currentTab, setCurrentTab] = useState(activeTab);
+  const [, navigate] = useLocation();
 
   const handleTabClick = (tab: string) => {
     setCurrentTab(tab);
     onTabChange?.(tab);
+    const route = TAB_ROUTES[tab];
+    if (route) {
+      const loanMatch = window.location.pathname.match(/\/loans\/([^/]+)/);
+      const id = loanMatch ? loanMatch[1] : "1";
+      navigate(route.replace(":id", id));
+    }
   };
 
   return (
@@ -289,11 +303,12 @@ function HeaderTextBlock({
         </span>
 
         <span
-          className="caption-100-strong inline-flex items-center"
+          className="body-200-strong inline-flex items-center"
           style={{
             backgroundColor: "var(--roads-bg-brand-subtle)",
             color: "var(--roads-text-brand)",
-            padding: "var(--roads-spacing-component-2xs) var(--roads-spacing-component-xs)",
+            height: "20px",
+            padding: "0 var(--roads-spacing-component-xs)",
             borderRadius: "var(--roads-radius-2xs)",
           }}
           data-testid="chip-application-type"
@@ -301,14 +316,15 @@ function HeaderTextBlock({
           {applicationType}
         </span>
 
-        <span style={{ color: "var(--roads-border-subtle)" }}>|</span>
+        <span style={{ color: "var(--roads-border-subtle)", height: "24px", display: "inline-flex", alignItems: "center" }}>|</span>
 
         <span
-          className="caption-100-strong inline-flex items-center"
+          className="body-200-strong inline-flex items-center"
           style={{
             backgroundColor: "var(--roads-bg-warning-subtle)",
             color: "var(--roads-text-warning)",
-            padding: "var(--roads-spacing-component-2xs) var(--roads-spacing-component-xs)",
+            height: "20px",
+            padding: "0 var(--roads-spacing-component-xs)",
             borderRadius: "var(--roads-radius-2xs)",
           }}
           data-testid="chip-ecoa-days"
@@ -317,11 +333,12 @@ function HeaderTextBlock({
         </span>
 
         <span
-          className="caption-100-strong inline-flex items-center"
+          className="body-200-strong inline-flex items-center"
           style={{
             backgroundColor: "var(--roads-bg-error-subtle)",
             color: "var(--roads-text-error)",
-            padding: "var(--roads-spacing-component-2xs) var(--roads-spacing-component-xs)",
+            height: "20px",
+            padding: "0 var(--roads-spacing-component-xs)",
             borderRadius: "var(--roads-radius-2xs)",
           }}
           data-testid="chip-trid-days"
@@ -354,7 +371,10 @@ function TabNavigation({
             onClick={() => onTabChange(tab)}
             className="label-strong whitespace-nowrap"
             style={{
-              padding: "var(--roads-spacing-component-l) var(--roads-spacing-component-xl)",
+              padding: "0 var(--roads-spacing-component-xl)",
+              height: "48px",
+              display: "flex",
+              alignItems: "center",
               color: isActive ? "var(--roads-text-brand)" : "var(--roads-text-primary)",
               borderBottom: isActive
                 ? "2px solid var(--roads-border-brand)"
@@ -401,7 +421,7 @@ export function BottomToolbar() {
             <span>{item.label}</span>
             {"hasIndicator" in item && item.hasIndicator && (
               <span
-                className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full"
+                className="w-1 h-1 rounded-full"
                 style={{ backgroundColor: "var(--roads-bg-error)" }}
                 data-testid="indicator-errors"
               />
