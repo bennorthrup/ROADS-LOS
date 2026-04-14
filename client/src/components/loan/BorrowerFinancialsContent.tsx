@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronUp, ChevronDown, Pencil, Calendar } from "lucide-react";
+import { BalanceSheetSection } from "./BalanceSheetSection";
 
 interface IncomeSourceData {
   id: string;
@@ -549,7 +550,6 @@ export function BorrowerFinancialsContent() {
       >
         Borrower Financials
       </h2>
-
       <div className="flex" data-testid="borrower-tabs">
         {borrowers.map((borrower, idx) => (
           <button
@@ -559,22 +559,20 @@ export function BorrowerFinancialsContent() {
               setEditingSourceIndex(null);
               setEditBuffer(null);
             }}
-            className="body-200-strong"
+            className="label-strong whitespace-nowrap"
             style={{
-              padding: "var(--roads-spacing-component-l) var(--roads-spacing-component-xl)",
-              borderBottom: idx === activeBorrowerIndex
-                ? "2px solid var(--roads-border-brand)"
-                : "1px solid var(--roads-border-subtle)",
+              padding: "0 var(--roads-spacing-component-xl)",
+              height: "48px",
+              display: "flex",
+              alignItems: "center",
               color: idx === activeBorrowerIndex
                 ? "var(--roads-text-brand)"
                 : "var(--roads-text-primary)",
               background: "none",
               border: "none",
-              borderBottomStyle: "solid",
-              borderBottomWidth: idx === activeBorrowerIndex ? "2px" : "1px",
-              borderBottomColor: idx === activeBorrowerIndex
-                ? "var(--roads-border-brand)"
-                : "var(--roads-border-subtle)",
+              borderBottom: idx === activeBorrowerIndex
+                ? "2px solid var(--roads-border-brand)"
+                : "1px solid var(--roads-border-subtle)",
               cursor: "pointer",
             }}
             data-testid={`tab-borrower-${idx}`}
@@ -583,7 +581,6 @@ export function BorrowerFinancialsContent() {
           </button>
         ))}
       </div>
-
       <div className="flex flex-col" style={{ gap: "var(--roads-spacing-component-xs)" }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center" style={{ gap: "var(--roads-spacing-component-xs)" }}>
@@ -643,31 +640,7 @@ export function BorrowerFinancialsContent() {
           ))}
         </div>
       </div>
-
-      <div className="flex flex-col" style={{ gap: "var(--roads-spacing-component-xs)" }}>
-        <div className="flex items-center">
-          <span
-            className="headline-300"
-            style={{ color: "var(--roads-text-primary)", paddingLeft: "var(--roads-spacing-component-s)" }}
-            data-testid="text-balance-sheet-title"
-          >
-            Balance Sheet
-          </span>
-        </div>
-        <div
-          className="flex items-center justify-center"
-          style={{
-            backgroundColor: "var(--roads-bg-light)",
-            borderRadius: "var(--roads-radius-2xs)",
-            padding: "var(--roads-spacing-component-3xl)",
-          }}
-          data-testid="balance-sheet-placeholder"
-        >
-          <span className="body-100" style={{ color: "var(--roads-text-secondary)" }}>
-            Coming Soon
-          </span>
-        </div>
-      </div>
+      <BalanceSheetSection />
     </div>
   );
 }
