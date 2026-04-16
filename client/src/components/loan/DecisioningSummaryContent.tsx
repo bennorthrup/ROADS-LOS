@@ -117,23 +117,6 @@ export function DecisioningSummaryContent() {
           >
             Pull Credit
           </button>
-          <button
-            disabled={!creditPulled}
-            onClick={() => { if (creditPulled) window.open("/credit-report.pdf", "_blank"); }}
-            className="body-200-strong whitespace-nowrap"
-            style={{
-              backgroundColor: "var(--roads-bg-primary)",
-              border: "1px solid var(--roads-border-dark)",
-              borderRadius: "var(--roads-radius-2xs)",
-              padding: "var(--roads-spacing-component-xs) var(--roads-spacing-component-l)",
-              color: !creditPulled ? "var(--roads-text-tertiary)" : "var(--roads-text-primary)",
-              cursor: !creditPulled ? "not-allowed" : "pointer",
-              opacity: !creditPulled ? 0.6 : 1,
-            }}
-            data-testid="button-view-credit-report"
-          >
-            View Credit Report
-          </button>
         </div>
       </div>
       </div>
