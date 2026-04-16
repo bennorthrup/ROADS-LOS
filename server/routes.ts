@@ -7,6 +7,7 @@ import { detectPushConflicts, detectPullConflicts, type FileEntry } from "./conf
 import { getPendingConflicts, setPendingConflicts, clearPendingConflicts } from "./pending-conflicts";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 
 const OWNER = "bennorthrup";
 const REPO = "ROADS-LOS";
@@ -76,6 +77,56 @@ async function fetchRemoteFiles(treePaths: string[], commitRef: string): Promise
     throw new Error(`Failed to fetch ${errors.length} file(s) from commit ${commitRef}: ${errors.slice(0, 5).join("; ")}`);
   }
   return files;
+}
+
+function computeGitBlobSha(content: Buffer): string {
+  const header = `blob ${content.length}\0`;
+  const store = Buffer.concat([Buffer.from(header), content]);
+  return crypto.createHash("sha1").update(store).digest("hex");
+}
+
+function diffAgainstRemoteTree(
+  localFiles: FileEntry[],
+  remoteTree: { path: string; type: string; sha: string }[],
+  projectRoot?: string
+): { changedFiles: FileEntry[]; deletions: string[] } {
+  const remoteBlobMap = new Map<string, string>();
+  for (const item of remoteTree) {
+    if (item.type === "blob" && !shouldIgnorePath(item.path)) {
+      remoteBlobMap.set(item.path, item.sha);
+    }
+  }
+
+  const localPathSet = new Set<string>();
+  const changedFiles: FileEntry[] = [];
+
+  for (const file of localFiles) {
+    localPathSet.add(file.path);
+    const remoteSha = remoteBlobMap.get(file.path);
+
+    const contentBuffer = file.encoding === "base64"
+      ? Buffer.from(file.content, "base64")
+      : Buffer.from(file.content);
+    const localSha = computeGitBlobSha(contentBuffer);
+
+    if (remoteSha !== localSha) {
+      changedFiles.push(file);
+    }
+  }
+
+  const deletions: string[] = [];
+  if (projectRoot) {
+    for (const [remotePath] of remoteBlobMap) {
+      if (!localPathSet.has(remotePath)) {
+        const fullPath = path.join(projectRoot, remotePath);
+        if (!fs.existsSync(fullPath)) {
+          deletions.push(remotePath);
+        }
+      }
+    }
+  }
+
+  return { changedFiles, deletions };
 }
 
 async function fetchRemoteFilesAtHead(treePaths: string[]): Promise<FileEntry[]> {
@@ -345,9 +396,10 @@ export async function registerRoutes(
         const remoteFiles = await fetchRemoteFilesAtHead(eligibleRemotePaths);
 
         let baseFiles: FileEntry[];
+        let baseTreeData: any;
         try {
-          const baseTree = await getRepoTreeAtCommit(OWNER, REPO, lastSyncedSha);
-          const basePaths = baseTree.tree
+          baseTreeData = await getRepoTreeAtCommit(OWNER, REPO, lastSyncedSha);
+          const basePaths = baseTreeData.tree
             .filter((item: any) => item.type === "blob" && !shouldIgnorePath(item.path) && !isBinaryFile(item.path))
             .map((item: any) => item.path)
             .filter((p: string) => unionPaths.has(p));
@@ -366,6 +418,7 @@ export async function registerRoutes(
             operation: "push",
             conflicts: report.conflicts,
             safeToUpdate: report.safeToUpdate,
+            safeToDelete: report.safeToDelete,
             remoteHeadSha,
             commitMessage,
             createdAt: new Date().toISOString(),
@@ -390,8 +443,51 @@ export async function registerRoutes(
           return;
         }
 
-        const filesToPush = report.safeToUpdate;
-        if (filesToPush.length === 0) {
+        const safeDeletions = [...(report.safeToDelete || [])];
+        let binaryFilteredSafeToUpdate = report.safeToUpdate;
+
+        try {
+          const baseBinaryShas = new Map<string, string>();
+          const remoteBinaryShas = new Map<string, string>();
+          for (const item of baseTreeData.tree) {
+            if (item.type === "blob" && !shouldIgnorePath(item.path) && isBinaryFile(item.path)) {
+              baseBinaryShas.set(item.path, item.sha);
+            }
+          }
+          for (const item of remoteTree) {
+            if (item.type === "blob" && !shouldIgnorePath(item.path) && isBinaryFile(item.path)) {
+              remoteBinaryShas.set(item.path, item.sha);
+            }
+          }
+
+          binaryFilteredSafeToUpdate = report.safeToUpdate.filter((f) => {
+            if (!isBinaryFile(f.path)) return true;
+            const baseSha = baseBinaryShas.get(f.path);
+            if (!baseSha) return true;
+            const contentBuffer = f.encoding === "base64"
+              ? Buffer.from(f.content, "base64")
+              : Buffer.from(f.content);
+            const localSha = computeGitBlobSha(contentBuffer);
+            return localSha !== baseSha;
+          });
+
+          for (const [binaryPath, baseSha] of baseBinaryShas) {
+            const fullPath = path.join(projectRoot, binaryPath);
+            if (!fs.existsSync(fullPath)) {
+              const remoteSha = remoteBinaryShas.get(binaryPath);
+              if (remoteSha === baseSha) {
+                safeDeletions.push(binaryPath);
+              }
+            }
+          }
+        } catch (binaryErr: any) {
+          console.warn("Binary diff against base tree failed, pushing all binaries:", binaryErr?.message);
+        }
+
+        const { changedFiles: filteredFiles } = diffAgainstRemoteTree(binaryFilteredSafeToUpdate, remoteTree);
+        const dedupedDeletions = [...new Set(safeDeletions)];
+
+        if (filteredFiles.length === 0 && dedupedDeletions.length === 0) {
           setLastSyncedCommit(remoteHeadSha);
           clearPendingConflicts();
           res.json({
@@ -405,30 +501,78 @@ export async function registerRoutes(
           return;
         }
 
-        const result = await pushCodebase(OWNER, REPO, filesToPush, commitMessage);
+        const result = await pushCodebaseWithDeletions(OWNER, REPO, filteredFiles, dedupedDeletions, commitMessage);
         setLastSyncedCommit(result.commitSha);
         clearPendingConflicts();
 
         res.json({
           ...result,
           conflicts: [],
-          safeFiles: filesToPush.map((f) => f.path),
+          safeFiles: filteredFiles.map((f) => f.path),
+          deletedFiles: dedupedDeletions,
           unchangedFiles: report.unchanged,
-          message: `Successfully pushed ${result.filesCount} locally-changed files to ${OWNER}/${REPO} (${report.unchanged.length} unchanged files preserved on remote)`,
+          message: `Successfully pushed ${result.filesCount} locally-changed file(s)${dedupedDeletions.length > 0 ? ` and deleted ${dedupedDeletions.length} file(s)` : ""} to ${OWNER}/${REPO} (${report.unchanged.length} unchanged files preserved on remote)`,
         });
         return;
       }
 
-      const result = await pushCodebase(OWNER, REPO, localFiles, commitMessage);
+      let filesToDiff = localFiles;
+
+      if (!force && lastSyncedSha) {
+        try {
+          const baseTreeForFallback = await getRepoTreeAtCommit(OWNER, REPO, lastSyncedSha);
+          const baseShaMap = new Map<string, string>();
+          for (const item of baseTreeForFallback.tree) {
+            if (item.type === "blob" && !shouldIgnorePath(item.path)) {
+              baseShaMap.set(item.path, item.sha);
+            }
+          }
+          filesToDiff = localFiles.filter((f) => {
+            const baseSha = baseShaMap.get(f.path);
+            if (!baseSha) return true;
+            const contentBuffer = f.encoding === "base64"
+              ? Buffer.from(f.content, "base64")
+              : Buffer.from(f.content);
+            const localSha = computeGitBlobSha(contentBuffer);
+            return localSha !== baseSha;
+          });
+        } catch (baseErr: any) {
+          console.warn("Base tree fetch failed, diffing against remote only:", baseErr?.message);
+        }
+      }
+
+      const canDetectDeletions = force || lastSyncedSha === remoteHeadSha;
+      const { changedFiles, deletions } = diffAgainstRemoteTree(
+        filesToDiff,
+        remoteTree,
+        canDetectDeletions ? projectRoot : undefined
+      );
+
+      if (changedFiles.length === 0 && deletions.length === 0) {
+        setLastSyncedCommit(remoteHeadSha);
+        clearPendingConflicts();
+        res.json({
+          commitSha: remoteHeadSha,
+          filesCount: 0,
+          conflicts: [],
+          safeFiles: [],
+          unchangedFiles: localFiles.map((f) => f.path),
+          message: "No local changes to push — all files match the remote.",
+        });
+        return;
+      }
+
+      const result = await pushCodebaseWithDeletions(OWNER, REPO, changedFiles, deletions, commitMessage);
       setLastSyncedCommit(result.commitSha);
       clearPendingConflicts();
 
       res.json({
         ...result,
         conflicts: [],
-        safeFiles: localFiles.map((f) => f.path),
+        safeFiles: changedFiles.map((f) => f.path),
+        deletedFiles: deletions,
         unchangedFiles: [],
-        message: `Successfully pushed ${result.filesCount} files to ${OWNER}/${REPO}`,
+        message: `Successfully pushed ${result.filesCount} changed file(s)${deletions.length > 0 ? ` and deleted ${deletions.length} file(s)` : ""} to ${OWNER}/${REPO} (${localFiles.length - changedFiles.length} unchanged files preserved on remote)`,
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -551,9 +695,11 @@ export async function registerRoutes(
           .filter((r) => r.resolvedContent !== null)
           .map((r) => ({ path: r.path, content: r.resolvedContent as string }));
         const filesToPush = [...pending.safeToUpdate, ...resolvedFileEntries];
-        const filesToDelete = validatedResolutions
+        const conflictDeletions = validatedResolutions
           .filter((r) => r.resolvedContent === null)
           .map((r) => r.path);
+        const pendingSafeDeletions = pending.safeToDelete || [];
+        const filesToDelete = [...conflictDeletions, ...pendingSafeDeletions];
 
         const commitMessage = pending.commitMessage || "Resolve conflicts and push from Replit";
 
