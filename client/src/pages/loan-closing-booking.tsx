@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { LoanHeader, BottomToolbar } from "@/components/loan/LoanHeader";
 import { SideNav } from "@/components/loan/SideNav";
-import { DocumentsContent, ClosingDocumentsContent, DOCUMENTS_NAV_ITEMS } from "@/components/loan/DocumentsContent";
+import { ClosingContent } from "@/components/loan/ClosingContent";
+import { BookingContent } from "@/components/loan/BookingContent";
 import type { Loan, Borrower } from "@shared/schema";
 
 interface LoanWithBorrowers extends Loan {
@@ -15,11 +16,16 @@ function formatCurrency(value: string): string {
   return `$${num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const CLOSING_BOOKING_NAV_ITEMS = [
+  "Closing",
+  "Booking",
+];
+
 function ComingSoon({ page }: { page: string }) {
   return (
     <div
       className="flex flex-1 items-center justify-center"
-      data-testid={`coming-soon-${page.toLowerCase().replace(/\s+&\s+/g, "-").replace(/\s+/g, "-")}`}
+      data-testid={`coming-soon-${page.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <div className="flex flex-col items-center" style={{ gap: "var(--roads-spacing-component-xs)" }}>
         <h2 className="headline-300" style={{ color: "var(--roads-text-primary)" }}>
@@ -33,10 +39,10 @@ function ComingSoon({ page }: { page: string }) {
   );
 }
 
-export default function LoanDocumentsPage() {
+export default function LoanClosingBookingPage() {
   const params = useParams<{ id: string }>();
   const loanId = params.id || "1";
-  const [activeNavItem, setActiveNavItem] = useState("Disclosures");
+  const [activeNavItem, setActiveNavItem] = useState("Closing");
 
   const { data: loan, isLoading, error } = useQuery<LoanWithBorrowers>({
     queryKey: ["/api/loans", loanId],
@@ -74,7 +80,7 @@ export default function LoanDocumentsPage() {
     <div
       className="h-screen flex flex-col overflow-hidden"
       style={{ backgroundColor: "var(--roads-bg-page)" }}
-      data-testid="loan-documents-page"
+      data-testid="loan-closing-booking-page"
     >
       <LoanHeader
         loanNumber={loan.loanNumber}
@@ -85,18 +91,20 @@ export default function LoanDocumentsPage() {
         applicationType={loan.applicationType}
         ecoaDaysRemaining={loan.ecoaDaysRemaining}
         tridDaysRemaining={loan.tridDaysRemaining}
-        activeTab="Documents"
+        activeTab="Closing & Booking"
       />
       <div className="flex flex-1 min-h-0">
         <SideNav
           activeItem={activeNavItem}
           onItemChange={setActiveNavItem}
-          items={DOCUMENTS_NAV_ITEMS}
+          items={CLOSING_BOOKING_NAV_ITEMS}
         />
         <div className="flex flex-1 flex-col overflow-y-auto" style={{ minWidth: 0, paddingBottom: "36px" }}>
-          {activeNavItem === "Disclosures" && <DocumentsContent />}
-          {activeNavItem === "Closing Documents" && <ClosingDocumentsContent />}
-          {activeNavItem !== "Disclosures" && activeNavItem !== "Closing Documents" && (
+          {activeNavItem === "Closing" ? (
+            <ClosingContent />
+          ) : activeNavItem === "Booking" ? (
+            <BookingContent />
+          ) : (
             <ComingSoon page={activeNavItem} />
           )}
         </div>
