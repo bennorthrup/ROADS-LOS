@@ -10,7 +10,7 @@ import * as path from "path";
 import * as crypto from "crypto";
 
 const OWNER = "bennorthrup";
-const REPO = "ROADS-LOS";
+const REPO = "ROADS-PIPELINE";
 
 const IGNORE_DIRS = new Set(["node_modules", ".git", ".cache", "dist", ".local", ".agents", "migrations", ".config", ".upm"]);
 const IGNORE_FILES = new Set(["package-lock.json"]);
@@ -168,7 +168,7 @@ export async function registerRoutes(
   app.get("/api/github/repo", async (_req, res) => {
     try {
       const user = await getAuthenticatedUser();
-      const repo = await getRepository(user.login, "ROADS-LOS");
+      const repo = await getRepository(user.login, REPO);
       res.json(repo);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -177,8 +177,8 @@ export async function registerRoutes(
 
   app.post("/api/github/repo", async (_req, res) => {
     try {
-      const repo = await createRepository("ROADS-LOS", {
-        description: "ROADS LOS - Living prototype of a Loan Origination System",
+      const repo = await createRepository(REPO, {
+        description: "ROADS PIPELINE",
         isPrivate: false,
       });
       res.json(repo);
